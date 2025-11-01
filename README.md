@@ -1,6 +1,8 @@
 ### Quantum Instanton
 
-This code uses quantum instanton to calculate the scattering rate of a quantum particle over a 1D Eckart barrier. The quantum instanton rate is given by
+This code uses quantum instanton to calculate the scattering rate of a quantum particle over a symmetric and an asymmetric 1D Eckart barrier.
+
+The quantum instanton rate is given by
 
 $$k_{\text{QI}}=\frac{\hbar\sqrt{\pi}}{2}\frac{C_{dd}(0)}{Q_r}\frac{C_{ff}(0)}{C_{dd}(0)}\frac{1}{\Delta H}\,.$$
 
