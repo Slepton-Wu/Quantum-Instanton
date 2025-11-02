@@ -10,5 +10,5 @@ Usually the first term $\frac{C_{dd}(0)}{Q_r}$ is sampled by umbrella sampling, 
 
 ### References:
  - Miller, W. H., Zhao, Y., Ceotto, M., & Yang, S. (2003). Quantum instanton approximation for thermal rate constants of chemical reactions. The Journal of chemical physics, 119(3), 1329-1342.
- - Yamamoto, Takeshi, and William H. Miller. "On the efficient path integral evaluation of thermal rate constants within the quantum instanton approximation." The Journal of chemical physics 120.7 (2004): 3086-3099.
+ - Yamamoto, T., & Miller, W. H. (2004). On the efficient path integral evaluation of thermal rate constants within the quantum instanton approximation. The Journal of chemical physics, 120(7), 3086-3099.
  - Yang, S., Yamamoto, T., & Miller, W. H. (2006). Path-integral virial estimator for reaction-rate calculation based on the quantum instanton approximation. The Journal of chemical physics, 124(8).
