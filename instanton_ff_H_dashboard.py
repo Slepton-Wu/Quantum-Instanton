@@ -454,7 +454,7 @@ def main():
             k = np.arange(n)
             # Cosine modulation amplitude based on potential scale
             amp = 0.20 * (np.max(Vx) - np.min(Vx) + 1e-9)
-            yk = y0 + amp * np.cos(2.0*np.pi*k/n)
+            yk = y0 + amp * np.sin(2.0*np.pi*k/n)
             xk = q.copy()
 
             # Connect points in bead order and close the loop

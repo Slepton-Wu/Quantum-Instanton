@@ -112,8 +112,8 @@ class Sampler:
         # Default parameters
         self.T = 1000.0               # K
         self.P = 16                  # half-beads
-        self.x_bar = 0.0
-        self.delta_x = 0.0
+        self.x_bar = -0.2
+        self.delta_x = 0.2
         self.m = 1060.0              # atomic mass units mapped as given (AU of mass, consistent with user's units)
         self.V0_eV = 0.425           # barrier height in eV
         self.a = 1.36
@@ -374,7 +374,7 @@ def main():
             n = q.size
             k = np.arange(n)
             xk = q.astype(float)
-            yk = y0 + amp * np.cos(2.0*np.pi*k/n)
+            yk = y0 + amp * np.sin(2.0*np.pi*k/n)
             ring_line.set_data(np.r_[xk, xk[0]], np.r_[yk, yk[0]])
             ring_scatter.set_data(xk, yk)
             ax3.set_title(f"Potential with bead ring (n={n})")
