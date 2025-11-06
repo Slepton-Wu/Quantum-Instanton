@@ -1,4 +1,4 @@
-import threading
+import threading, time
 import time
 from collections import deque
 
@@ -6,6 +6,9 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
+from numba import njit
+
+# need to install rocket fft (via pip install rocket-fft) so that fft can be performed in numba. Otherwise, you need to remove all the numba stuffs -- but the code will run slower.
 
 # ---------------------- Physical constants (atomic units) ----------------------
 # Atomic unit of energy (Hartree) and Boltzmann in Hartree/K
@@ -21,10 +24,12 @@ except Exception:
     eV_to_Eh = 0.03674932217565499
 
 # ---------------------- Force field (Asymmetric Eckart) -----------------------
+@njit(nopython=True, fastmath=True)
 def V_Asym_Eckart(q, V0, a, alpha):
     # V(q) = V0 * (1-alpha)/(1+exp(-2 a q)) + V0 * (1+sqrt(alpha))^2 / (4 cosh^2(a q))
     return V0 * (1.0 - alpha) / (1.0 + np.exp(-2.0 * a * q)) + V0 * (1.0 + np.sqrt(alpha))**2 / (4.0 * np.cosh(a*q)**2)
 
+@njit(nopython=True, fastmath=True)
 def F_Asym_Eckart(q, V0, a, alpha):
     # F(q) = -dV/dq
     term1 = V0 * a * (1.0 + np.sqrt(alpha))**2 * np.sinh(a*q) / (2.0 * np.cosh(a*q)**3)
@@ -32,11 +37,13 @@ def F_Asym_Eckart(q, V0, a, alpha):
     return term1 - term2
 
 # ------------------- Ring-polymer utilities (pure NumPy) ----------------------
+@njit(nopython=True, fastmath=True)
 def normal_mode_frequencies(beta_n, n):
     omega_n = 1.0 / beta_n
     k = np.arange(n)
     return 2.0 * omega_n * np.sin(np.pi * k / n)  # omega[0] = 0
 
+@njit(nopython=True, fastmath=True)
 def mode_propagation(q, v, omega, delta_t):
     # FFT to normal modes, evolve harmonically, IFFT back
     Qk = np.fft.fft(q)
@@ -61,6 +68,7 @@ def mode_propagation(q, v, omega, delta_t):
     v_next = np.fft.ifft(Vk_next).real
     return q_next, v_next
 
+@njit(nopython=True, fastmath=True)
 def polymer_step_rattle(q, v, beta_n, delta_t, m, force_func, ff_params, q0, qP, P):
     """
     One time step with:
@@ -90,6 +98,7 @@ def polymer_step_rattle(q, v, beta_n, delta_t, m, force_func, ff_params, q0, qP,
     v_new[P] = 0.0
     return q_mode, v_new
 
+@njit(nopython=True, fastmath=True)
 def virial_weights(P, n):
     k = np.arange(n)
     s = np.zeros(n)
@@ -101,6 +110,7 @@ def virial_weights(P, n):
     t[0], t[P] = 0.0, 1.0
     return s, t
 
+@njit(nopython=True, fastmath=True)
 def dU_dq_all(q, k_eff, force_func, ff_params):
     springs = k_eff * (2.0*q - np.roll(q,1) - np.roll(q,-1))
     pot     = - force_func(q, *ff_params)  # because F = -dV/dq
@@ -118,6 +128,7 @@ class Sampler:
         self.V0_eV = 0.425           # barrier height in eV
         self.a = 1.36
         self.alpha = 1.25
+        self.delay_ms = 0.5
 
         # Integrator settings
         self.t_end = 100.0
@@ -141,7 +152,7 @@ class Sampler:
                         m=self.m, V0_eV=self.V0_eV, a=self.a, alpha=self.alpha,
                         t_end=self.t_end, delta_t=self.delta_t)
 
-    def apply_params(self, T, P, x_bar, delta_x, m, V0_eV, a, alpha):
+    def apply_params(self, T, P, x_bar, delta_x, m, V0_eV, a, alpha, delay_ms):
         with self._lock:
             self.T = float(T)
             self.P = int(P)
@@ -152,6 +163,7 @@ class Sampler:
             self.a = float(a)
             self.alpha = float(alpha)
             self._needs_reset = True  # trigger rebuild of polymer & weights
+            self.delay_ms = float(delay_ms)
 
     def toggle_pause(self):
         with self._lock:
@@ -201,7 +213,7 @@ class Sampler:
                 needs_reset = self._needs_reset
                 T = self.T; P = int(self.P); x_bar = self.x_bar; delta_x = self.delta_x
                 m = self.m; V0 = self.V0_eV * eV_to_Eh; a = self.a; alpha = self.alpha
-                t_end = self.t_end; delta_t = self.delta_t
+                t_end = self.t_end; delta_t = self.delta_t; delay_ms = self.delay_ms
 
             if paused:
                 time.sleep(0.05)
@@ -264,6 +276,8 @@ class Sampler:
                 # store latest configuration for plot 3
                 self.latest_q = q.copy()
 
+                time.sleep(max(0.0, 0.001*delay_ms))
+
             # Allow UI thread to catch up
             time.sleep(0.01)
 
@@ -309,6 +323,7 @@ def main():
     ax_P      = fig4.add_axes([0.10, 0.72, 0.35, 0.05], facecolor=axcolor)
     ax_xbar   = fig4.add_axes([0.10, 0.64, 0.35, 0.05], facecolor=axcolor)
     ax_delx   = fig4.add_axes([0.10, 0.56, 0.35, 0.05], facecolor=axcolor)
+    ax_delay  = fig4.add_axes([0.10, 0.48, 0.35, 0.05], facecolor=axcolor)
     ax_V0     = fig4.add_axes([0.55, 0.80, 0.35, 0.05], facecolor=axcolor)
     ax_a      = fig4.add_axes([0.55, 0.72, 0.35, 0.05], facecolor=axcolor)
     ax_alpha  = fig4.add_axes([0.55, 0.64, 0.35, 0.05], facecolor=axcolor)
@@ -318,6 +333,7 @@ def main():
     s_P     = Slider(ax_P,     r"$P$",           2,    256,     valinit=sampler.P, valstep=1.0)
     s_xbar  = Slider(ax_xbar,  r"$\bar{x}$",          -6.0,  6.0,     valinit=sampler.x_bar, valstep=0.01)
     s_delx  = Slider(ax_delx,  r"$\delta x$",          0.0,   6.0,    valinit=sampler.delta_x, valstep=0.01)
+    s_delay = Slider(ax_delay, "Delay (ms)",          0.0,   2.0,    valinit=sampler.delay_ms, valstep=0.001)
     s_V0    = Slider(ax_V0,    r"$V_0$ / $\mathrm{eV}$",     0.01,  2.0,    valinit=sampler.V0_eV, valstep=0.001)
     s_a     = Slider(ax_a,     r"$a$",           0.05,  5.0,    valinit=sampler.a, valstep=0.01)
     s_alpha = Slider(ax_alpha, r"$\alpha$",       0.05,  5.0,    valinit=sampler.alpha, valstep=0.01)
@@ -335,7 +351,7 @@ def main():
     # Button callbacks
     def on_apply(event):
         sampler.apply_params(
-            s_T.val, int(s_P.val), s_xbar.val, s_delx.val, s_m.val, s_V0.val, s_a.val, s_alpha.val
+            s_T.val, int(s_P.val), s_xbar.val, s_delx.val, s_m.val, s_V0.val, s_a.val, s_alpha.val, s_delay.val
         )
 
     def on_pause(event):

@@ -3,6 +3,9 @@ from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
+from numba import njit
+
+# need to install rocket fft (via pip install rocket-fft) so that fft can be performed in numba. Otherwise, you need to remove all the numba stuffs -- but the code will run slower.
 
 # ---------------------- constants (a.u.) ----------------------
 try:
@@ -15,22 +18,27 @@ except Exception:
     eV_to_Eh = 0.03674932217565499
 
 # ---------------------- potential & forces --------------------
+@njit(nopython=True, fastmath=True)
 def V_Asym_Eckart(q, V0, a, alpha):
     return V0 * (1.0 - alpha) / (1.0 + np.exp(-2.0 * a * q)) + V0 * (1.0 + np.sqrt(alpha))**2 / (4.0 * np.cosh(a*q)**2)
 
+@njit(nopython=True, fastmath=True)
 def F_Asym_Eckart(q, V0, a, alpha):
     term1 = V0 * a * (1.0 + np.sqrt(alpha))**2 * np.sinh(a*q) / (2.0 * np.cosh(a*q)**3)
     term2 = 2.0 * V0 * a * (1.0 - alpha) * np.exp(-2.0*a*q) / (1.0 + np.exp(-2.0*a*q))**2
     return term1 - term2
 
+@njit(nopython=True, fastmath=True)
 def ddV_central(q, V0, a, alpha, h=1e-4):
     return (V_Asym_Eckart(q+h, V0, a, alpha) - 2.0*V_Asym_Eckart(q, V0, a, alpha) + V_Asym_Eckart(q-h, V0, a, alpha)) / (h*h)
 
 # ---------------------- ring polymer stepping -----------------
+@njit(nopython=True, fastmath=True)
 def normal_mode_frequencies(beta_n, n):
     k = np.arange(n)
     return 2.0 / beta_n * np.sin(np.pi * k / n)
 
+@njit(nopython=True, fastmath=True)
 def mode_propagation(q, v, omega, dt):
     Qk, Vk = np.fft.fft(q), np.fft.fft(v)
     Qk_next = np.empty_like(Qk, dtype=np.complex128)
@@ -44,6 +52,7 @@ def mode_propagation(q, v, omega, dt):
     Vk_next[1:] = Vk_pos * c - Qk_pos * (om*s)
     return np.fft.ifft(Qk_next).real, np.fft.ifft(Vk_next).real
 
+@njit(nopython=True, fastmath=True)
 def polymer_step_rattle(q, v, beta_n, dt, m, force_func, ff_params, q0, qP, P):
     omega = normal_mode_frequencies(beta_n, q.size)
     f = force_func(q, *ff_params)
@@ -128,6 +137,7 @@ class Sampler:
         self.V0_eV = 0.425
         self.a = 1.36
         self.alpha = 1.25
+        self.delay_ms = 0.5
 
         # Internal evolution controls (no sliders)
         self.t_end = 150.0
@@ -153,19 +163,20 @@ class Sampler:
         self.stats_S_VI = OnlineStats()
 
         # ACF control
-        self.acf_max_lag = 2000
+        self.acf_max_lag = 3000
 
         # Display window (x-range) for plots 1 & 2
-        self.display_window = 3000  # initial samples to show
+        self.display_window = 10000  # initial samples to show
 
         # latest configuration
         self.latest_q = None
 
-    def apply_params(self, T, P, x_bar, delta_x, m, V0_eV, a, alpha):
+    def apply_params(self, T, P, x_bar, delta_x, m, V0_eV, a, alpha, delay_ms):
         with self._lock:
             self.T=float(T); self.P=int(P); self.x_bar=float(x_bar); self.delta_x=float(delta_x)
             self.m=float(m); self.V0_eV=float(V0_eV); self.a=float(a); self.alpha=float(alpha)
             self._needs_reset = True
+            self.delay_ms = float(delay_ms)
 
     def set_acf_maxlag(self, L):
         with self._lock:
@@ -195,7 +206,7 @@ class Sampler:
                 paused = self._paused; needs_reset = self._needs_reset
                 T=self.T; P=int(self.P); x_bar=self.x_bar; delta_x=self.delta_x
                 m=self.m; V0=self.V0_eV*eV_to_Eh; a=self.a; alpha=self.alpha
-                t_end=self.t_end; dt=self.delta_t; N_pre=self.N_pre
+                t_end=self.t_end; dt=self.delta_t; N_pre=self.N_pre; delay_ms = self.delay_ms
             if paused: time.sleep(0.05); continue
             if needs_reset:
                 n=2*P; beta=1.0/(kB*T); beta_n=beta/n
@@ -273,6 +284,8 @@ class Sampler:
 
                 self.latest_q = q.copy()
 
+                time.sleep(max(0.0, 0.001*delay_ms))
+
             cache['q']=q
             time.sleep(0.01)
 
@@ -322,22 +335,24 @@ def main():
     ax_P     = fig5.add_axes([0.10,0.72,0.35,0.06], facecolor=axcolor)
     ax_xbar  = fig5.add_axes([0.10,0.64,0.35,0.06], facecolor=axcolor)
     ax_delx  = fig5.add_axes([0.10,0.56,0.35,0.06], facecolor=axcolor)
+    ax_delay = fig5.add_axes([0.10,0.48,0.35,0.06], facecolor=axcolor)
     ax_V0    = fig5.add_axes([0.55,0.80,0.35,0.06], facecolor=axcolor)
     ax_a     = fig5.add_axes([0.55,0.72,0.35,0.06], facecolor=axcolor)
     ax_alpha = fig5.add_axes([0.55,0.64,0.35,0.06], facecolor=axcolor)
     ax_m     = fig5.add_axes([0.55,0.56,0.35,0.06], facecolor=axcolor)
-    ax_Lag   = fig5.add_axes([0.10,0.44,0.80,0.06], facecolor=axcolor)
+    ax_Lag   = fig5.add_axes([0.55,0.48,0.35,0.06], facecolor=axcolor)
     ax_Xwin  = fig5.add_axes([0.10,0.36,0.80,0.06], facecolor=axcolor)
 
     s_T     = Slider(ax_T,    r"$T\ /\ \mathrm{K}$",    10.0, 5000.0,  valinit=s.T,      valstep=1.0)
     s_P     = Slider(ax_P,    r"$P$",        2,    256,     valinit=s.P,      valstep=1.0)
     s_xbar  = Slider(ax_xbar, r"$\bar{x}$",       -2.0, 2.0,     valinit=s.x_bar,  valstep=0.01)
     s_delx  = Slider(ax_delx, r"$\delta x$",       0.0,  2.0,     valinit=s.delta_x,valstep=0.01)
+    s_delay = Slider(ax_delay, "Delay (ms)",          0.0,   2.0,    valinit=s.delay_ms, valstep=0.001)
     s_V0    = Slider(ax_V0,   r"$V_0\ /\ \mathrm{eV}$",  0.01, 2.0,     valinit=s.V0_eV,  valstep=0.001)
     s_a     = Slider(ax_a,    r"$a$",        0.05, 5.0,     valinit=s.a,      valstep=0.01)
     s_alpha = Slider(ax_alpha,r"$\alpha$",    0.05, 5.0,     valinit=s.alpha,  valstep=0.01)
     s_m     = Slider(ax_m,    r"$m$",        1.0,  5000.0,  valinit=s.m,      valstep=1.0)
-    s_Lag   = Slider(ax_Lag,  "ACF max lag", 50, 10000, valinit=s.acf_max_lag, valstep=10)
+    s_Lag   = Slider(ax_Lag,  "ACF lag", 50, 10000, valinit=s.acf_max_lag, valstep=10)
     s_Xwin  = Slider(ax_Xwin, "X window (samples)", 100, 200000, valinit=s.display_window, valstep=50)
 
     # Buttons
@@ -349,7 +364,7 @@ def main():
     b_reset = Button(ax_reset, "Reset")
 
     def on_apply(evt):
-        s.apply_params(s_T.val, int(s_P.val), s_xbar.val, s_delx.val, s_m.val, s_V0.val, s_a.val, s_alpha.val)
+        s.apply_params(s_T.val, int(s_P.val), s_xbar.val, s_delx.val, s_m.val, s_V0.val, s_a.val, s_alpha.val, s_delay.val)
     def on_pause(evt):
         running = s.toggle_pause(); b_pause.label.set_text("Pause" if running else "Resume")
     def on_reset(evt):
