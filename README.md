@@ -5,7 +5,7 @@ This code uses quantum instanton to calculate the scattering rate of a quantum p
 The quantum instanton rate is given by
 
 $$
-k_{\text{QI}}=\frac{\hbar\sqrt{\pi}}{2}\frac{C_{dd}(0)}{Q_r}\frac{C_{ff}(0)}{C_{dd}(0)}\frac{1}{\Delta H}\,.
+k_{\text{QI}}=\frac{\hbar\sqrt{\pi}}{2}\frac{C_{dd}(0)}{Q_r}\frac{C_{ff}(0)}{C_{dd}(0)}\frac{1}{\Delta H} \,.
 $$
 
 Usually the first term $\frac{C_{dd}(0)}{Q_r}$ is sampled by umbrella sampling, and the last two terms are sampled by Path Integral Monte Carlo. However, converging Monte Carlo for ring polymers are notoriously slow due to the extremely high dimensionality of the extended phase space. Therefore I do everything using constained MD with SHAKE and RATTLE algorithm. In addition, the first term is sampled by thermodynamic integration (because I like it over umbrella), and I used a virial estimator instead of a traditional thermodynamic one, which gives much much lower variance. The largest uncertainty comes to the $\frac{C_{ff}(0)}{C_{dd}(0)}$ sampling because I couldn't find a better estimator other than the usual thermodynamic one.
